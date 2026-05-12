@@ -25,6 +25,8 @@ type SpjHistoryItem = {
   penyelenggara?: string;
   peserta?: string;
   alamat?: string;
+  tujuan?: string;
+  uraian?: string;
 };
 
 function App() {
@@ -34,7 +36,7 @@ function App() {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState<string | null>(null);
 
-  const { register, handleSubmit } = useForm();
+  const { register, handleSubmit, setValue } = useForm();
   const [images, setImages] = useState<string[]>([]);
 
   const [historyItems, setHistoryItems] = useState<SpjHistoryItem[]>([]);
@@ -51,6 +53,12 @@ function App() {
 
   const persistHistory = (next: SpjHistoryItem[]) => {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(next));
+  };
+
+  const handleRemoveHistoryItem = (id: string) => {
+    const next = historyItems.filter((x) => x.id !== id);
+    setHistoryItems(next);
+    persistHistory(next);
   };
 
   useEffect(() => {
@@ -118,7 +126,7 @@ function App() {
   const pushHistory = (item: Omit<SpjHistoryItem, 'id' | 'createdAt'>) => {
     const next: SpjHistoryItem[] = [
       {
-        id: `${new Date().getTime()}`, 
+        id: `${new Date().getTime()}`,
         createdAt: new Date().toISOString(),
         ...item,
       },
@@ -127,6 +135,22 @@ function App() {
 
     setHistoryItems(next);
     persistHistory(next);
+  };
+
+  const handleContinueFromHistory = (it: SpjHistoryItem) => {
+    // isi ulang form dari riwayat
+    setValue('judul', it.judul || '');
+    setValue('tanggal', it.tanggal || '');
+    setValue('waktu', it.waktu || '');
+    setValue('tempat', it.tempat || '');
+    setValue('penyelenggara', it.penyelenggara || '');
+    setValue('alamat', it.alamat || '');
+    setValue('peserta', it.peserta || '');
+    setValue('tujuan', it.tujuan || '');
+    setValue('uraian', it.uraian || '');
+
+    // scroll ke form paling atas
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // --- FUNGSI GENERATE PDF (VERSI FINAL: FIX TERPOTONG & SIMETRIS TANDA TANGAN) ---
@@ -283,6 +307,8 @@ function App() {
       penyelenggara: data.penyelenggara || penyelenggara,
       peserta: data.peserta,
       alamat: data.alamat,
+      tujuan: data.tujuan,
+      uraian: data.uraian,
     });
   };
 
@@ -462,6 +488,46 @@ function App() {
                   <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
                     Exported: {new Date(it.createdAt).toLocaleString('id-ID')}
                   </div>
+
+                  <div style={{ marginTop: 12, display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleContinueFromHistory(it)}
+                      style={{
+                        padding: '8px 10px',
+                        backgroundColor: '#38bdf8',
+                        color: '#0b1220',
+                        border: 'none',
+                        borderRadius: 12,
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                        flex: 1,
+                      }}
+                    >
+                      Lanjutkan
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const ok = window.confirm('Hapus item riwayat laporan ini?');
+                        if (!ok) return;
+                        handleRemoveHistoryItem(it.id);
+                      }}
+                      style={{
+                        padding: '8px 10px',
+                        backgroundColor: '#ef4444',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: 12,
+                        fontWeight: 900,
+                        cursor: 'pointer',
+                      }}
+                      aria-label={`Hapus riwayat ${it.judul || ''}`}
+                    >
+                      Hapus
+                    </button>
+                  </div>
                 </div>
               ))}
               {historyItems.length > 10 && (
@@ -591,6 +657,8 @@ function App() {
                   penyelenggara: typeof data.penyelenggara === 'string' ? data.penyelenggara : undefined,
                   peserta: data.peserta,
                   alamat: data.alamat,
+                  tujuan: data.tujuan,
+                  uraian: data.uraian,
                 });
               })}
               style={{ ...submitBtn, flex: 1 }}
