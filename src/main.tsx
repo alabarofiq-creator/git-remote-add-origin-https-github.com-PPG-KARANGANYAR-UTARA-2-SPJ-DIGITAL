@@ -11,3 +11,4 @@ createRoot(document.getElementById('root')!).render(
 import { registerSW } from 'virtual:pwa-register'
 
 registerSW({ immediate: true })
+console.log("update terbaru")
