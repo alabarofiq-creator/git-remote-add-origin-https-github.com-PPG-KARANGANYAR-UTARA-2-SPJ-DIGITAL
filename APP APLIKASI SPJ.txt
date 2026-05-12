@@ -1,0 +1,232 @@
+APP APLIKASI SPJ PRO
+
+import { useForm } from "react-hook-form";
+import { exportToWord } from "./utils/generateWord";
+import { useState } from "react";
+import { jsPDF } from "jspdf";
+
+function App() {
+  const { register, handleSubmit } = useForm();
+  const [images, setImages] = useState<string[]>([]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      const filesArray = Array.from(e.target.files);
+      filesArray.forEach((file) => {
+        const reader = new FileReader();
+        reader.onloadend = () => setImages((prev) => [...prev, reader.result as string]);
+        reader.readAsDataURL(file);
+      });
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // --- FUNGSI GENERATE PDF (VERSI FINAL: FIX HEADER DOUBLE & JARAK PENUTUP) ---
+  const exportToPDF = (data: any) => {
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const marginSize = 20; 
+    const contentWidth = pageWidth - (marginSize * 2); 
+    
+    const getFullDate = (dateString: string) => {
+      if (!dateString) return "-";
+      const date = new Date(dateString);
+      return new Intl.DateTimeFormat('id-ID', {
+        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+      }).format(date);
+    };
+
+    const tglLengkap = getFullDate(data.tanggal);
+    let currentY = 20;
+
+    const drawAttachmentHeader = () => {
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.text("LAMPIRAN DOKUMENTASI KEGIATAN", pageWidth / 2, 20, { align: "center" });
+      doc.text(data.judul?.toUpperCase() || "-", pageWidth / 2, 26, { align: "center" });
+      return 40; 
+    };
+
+    // --- HEADER (FIXED: Tidak Dobel Lagi) ---
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("BERITA ACARA PELAKSANAAN KEGIATAN", pageWidth / 2, currentY, { align: "center" });
+    currentY += 6;
+    // Mengambil langsung dari input Penyelenggara tanpa embel-embel teks manual agar tidak double
+    doc.text(`${data.penyelenggara?.toUpperCase() || "-"}`, pageWidth / 2, currentY, { align: "center" });
+    currentY += 5;
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(data.alamat || "-", pageWidth / 2, currentY, { align: "center" });
+    
+    currentY += 2;
+    doc.line(marginSize, currentY, pageWidth - marginSize, currentY); 
+    
+    currentY += 10;
+    doc.text(`Pada hari ini ${tglLengkap}, telah dilaksanakan kegiatan:`, marginSize, currentY);
+    
+    // --- DETAIL ---
+    const leftX = 20;  
+    const separatorX = 55; 
+    const rightX = 58; 
+    
+    currentY += 10;
+    const fields = [
+      { label: "Nama Kegiatan", value: data.judul },
+      { label: "Hari / Tanggal", value: tglLengkap },
+      { label: "Waktu", value: data.waktu },
+      { label: "Tempat", value: data.tempat },
+      { label: "Penyelenggara", value: data.penyelenggara },
+      { label: "Peserta", value: data.peserta }
+    ];
+
+    fields.forEach(field => {
+      doc.setFont("helvetica", "bold");
+      doc.text(field.label, leftX, currentY);
+      doc.text(":", separatorX, currentY);
+      doc.setFont("helvetica", "normal");
+      doc.text(`${field.value || "-"}`, rightX, currentY, { maxWidth: contentWidth - 38 });
+      currentY += 7;
+    });
+
+    // --- URAIAN ---
+    currentY += 8;
+    doc.setFont("helvetica", "bold");
+    doc.text("Uraian Singkat Kegiatan:", marginSize, currentY);
+    currentY += 6;
+    doc.setFont("helvetica", "normal");
+    const uraianLines = doc.splitTextToSize(data.uraian || "-", contentWidth);
+    doc.text(uraianLines, marginSize, currentY, { align: 'justify', maxWidth: contentWidth });
+    
+    // --- TAMBAHAN PARAGRAF PENUTUP (Jarak diperlebar sedikit agar rapi) ---
+    currentY += (uraianLines.length * 6) + 8;
+    const penutup1 = `Bahwa kegiatan tersebut dilaksanakan dengan tujuan ${data.tujuan || "-"}. Kegiatan berjalan dengan lancar, tertib, dan sesuai dengan rencana.`;
+    const penutup1Lines = doc.splitTextToSize(penutup1, contentWidth);
+    doc.text(penutup1Lines, marginSize, currentY, { align: 'justify', maxWidth: contentWidth });
+    
+    currentY += (penutup1Lines.length * 6) + 6;
+    doc.text("Demikian Berita Acara ini dibuat dengan sebenar-benarnya untuk dipergunakan sebagaimana mestinya.", marginSize, currentY, { maxWidth: contentWidth });
+
+    // --- TANDA TANGAN ---
+    currentY += 25;
+    if (currentY > 260) { doc.addPage(); currentY = 20; }
+    doc.text("Mengetahui,", 40, currentY);
+    doc.text("Penanggung Jawab,", pageWidth - 80, currentY);
+    currentY += 25;
+    doc.text("( ____________________ )", 30, currentY);
+    doc.text(`( ${data.penyelenggara || "-"} )`, pageWidth - 90, currentY);
+
+    // --- LAMPIRAN ---
+    if (images.length > 0) {
+      images.forEach((img, index) => {
+        if (index % 2 === 0) {
+          doc.addPage();
+          currentY = drawAttachmentHeader();
+        }
+        doc.addImage(img, 'JPEG', 25, currentY, 160, 100, undefined, 'MEDIUM');
+        currentY += 110; 
+      });
+    }
+
+    doc.save(`SPJ_${data.judul || "Laporan"}.pdf`);
+  };
+
+  return (
+    <div style={{ backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '15px', fontFamily: 'Inter, system-ui, sans-serif' }}>
+      <div style={{ maxWidth: '500px', margin: '0 auto' }}>
+        
+        <header style={{ textAlign: 'center', padding: '20px 0' }}>
+          <h1 style={{ fontSize: '28px', margin: 0, background: 'linear-gradient(to right, #38bdf8, #818cf8)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', fontWeight: '800' }}>
+            SPJ SMART PRO
+          </h1>
+          <p style={{ color: '#94a3b8', fontSize: '14px' }}>Laporan Kegiatan Digital</p>
+        </header>
+
+        <form style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+          
+          <div style={cardStyle}>
+            <h3 style={labelHeader}>📌 DETAIL KEGIATAN</h3>
+            <input {...register("judul")} placeholder="Nama Kegiatan" style={inputStyle} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <input {...register("tanggal")} type="date" style={inputStyle} />
+              <input {...register("waktu")} placeholder="Jam (10.00 WIB)" style={inputStyle} />
+            </div>
+            <input {...register("tempat")} placeholder="Tempat / Lokasi" style={inputStyle} />
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={labelHeader}>🏢 PENYELENGGARA</h3>
+            <input {...register("penyelenggara")} placeholder="Nama Instansi / Bidang" style={inputStyle} />
+            <input {...register("alamat")} placeholder="Alamat Instansi / Daerah" style={inputStyle} />
+            <input {...register("peserta")} placeholder="Daftar Peserta" style={inputStyle} />
+          </div>
+
+          <div style={cardStyle}>
+            <h3 style={labelHeader}>📝 NARASI LAPORAN</h3>
+            <input {...register("tujuan")} placeholder="Tujuan kegiatan" style={inputStyle} />
+            <textarea {...register("uraian")} placeholder="Uraian Singkat..." style={{ ...inputStyle, height: '100px', resize: 'none' }} />
+          </div>
+
+          <div style={{ ...cardStyle, border: '2px dashed #38bdf8', textAlign: 'center', backgroundColor: '#1e293b' }}>
+            <h3 style={{ ...labelHeader, color: '#38bdf8' }}>📸 DOKUMENTASI</h3>
+            <p style={{ fontSize: '12px', color: '#94a3b8', marginBottom: '10px' }}>
+              Pilih foto dari galeri atau ambil foto baru
+            </p>
+            <input type="file" accept="image/*" multiple onChange={handleImageChange} id="upload-photo" style={{ display: 'none' }} />
+            <label htmlFor="upload-photo" style={uploadBtn}>
+              Tambah Foto
+            </label>
+
+            {images.length > 0 && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', marginTop: '15px' }}>
+                {images.map((img, i) => (
+                  <div key={i} style={{ position: 'relative' }}>
+                    <img src={img} style={{ width: '100%', height: '60px', borderRadius: '6px', objectFit: 'cover', border: '1px solid #38bdf8' }} />
+                    <button type="button" onClick={() => removeImage(i)} style={deleteBtn}>✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button type="button" onClick={handleSubmit((data) => exportToWord({ ...data, images }))} style={{ ...submitBtn, flex: 1 }}>
+              WORD (.DOCX)
+            </button>
+            <button type="button" onClick={handleSubmit(exportToPDF)} style={{ ...submitBtn, backgroundColor: '#ef4444', flex: 1 }}>
+              PDF (.PDF)
+            </button>
+          </div>
+          
+        </form>
+      </div>
+
+      <div style={{ marginTop: '30px', textAlign: 'center', borderTop: '1px solid #334155', paddingTop: '20px' }}>
+        <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '10px' }}>Support & Follow Us:</p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
+          <a href="https://www.tiktok.com/@rofiiiqbs" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '5px', color: '#ff0050' }}>
+            <span style={{ fontSize: '20px' }}>📱</span>
+            <span style={{ fontWeight: 'bold' }}>TikTok</span>
+          </a>
+          <a href="https://www.instagram.com/rofiiiqbs" target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '5px', color: '#e1306c' }}>
+            <span style={{ fontSize: '20px' }}>📸</span>
+            <span style={{ fontWeight: 'bold' }}>Instagram</span>
+          </a>
+        </div>
+        <p style={{ fontSize: '12px', color: '#475569', marginTop: '15px' }}>© 2026 Rofiiiqbs. All rights reserved.</p>
+      </div>
+    </div>
+  );
+}
+
+const cardStyle = { backgroundColor: '#1e293b', padding: '20px', borderRadius: '16px', border: '1px solid #334155' };
+const labelHeader = { fontSize: '12px', color: '#94a3b8', marginBottom: '15px' };
+const inputStyle = { width: '100%', padding: '12px', borderRadius: '8px', border: '1px solid #334155', backgroundColor: '#0f172a', color: '#f8fafc', marginBottom: '10px' };
+const uploadBtn = { display: 'inline-block', padding: '10px 20px', backgroundColor: '#38bdf8', color: '#0f172a', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' };
+const submitBtn = { width: '100%', padding: '18px', backgroundColor: '#2563eb', color: 'white', border: 'none', borderRadius: '16px', fontWeight: '800', cursor: 'pointer' };
+const deleteBtn = { position: 'absolute' as 'absolute', top: '-5px', right: '-5px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '50%', width: '18px', height: '18px', fontSize: '10px' };
+
+export default App;
